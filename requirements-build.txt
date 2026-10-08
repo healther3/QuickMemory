@@ -1,0 +1,3 @@
+# Windows release tooling only; does not change application dependency versions.
+pyinstaller==6.16.0
+pyinstaller-hooks-contrib==2026.8
