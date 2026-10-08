@@ -29,6 +29,60 @@ def test_secret_never_returned_and_target_change_clears(client):
     assert not settings["has_api_key"]
 
 
+def test_saved_key_survives_full_form_save_and_application_restart(tmp_path):
+    """Exercise a real file database; the browser never receives the stored key."""
+    database = tmp_path / "persisted-settings.db"
+    fake_key = "isolated-persistence-test-key"
+    with TestClient(create_app(database, seed=False)) as first:
+        response = first.put("/api/settings", json={
+            "provider": "custom", "base_url": "http://localhost:9911/v1/",
+            "model": "isolated-test-model", "api_key": fake_key,
+        })
+        assert response.status_code == 200
+        assert response.json()["has_api_key"] is True
+        assert fake_key not in response.text
+
+        # A remounted Settings page submits all public fields and omits a blank
+        # password input. A harmless trailing slash also preserves the key.
+        public_settings = first.get("/api/settings").json()
+        public_settings.pop("has_api_key")
+        public_settings.update(judge_count=2, base_url="http://localhost:9911/v1/")
+        saved_again = first.put("/api/settings", json=public_settings)
+        assert saved_again.status_code == 200
+        assert saved_again.json()["has_api_key"] is True
+
+    # Starting a new application recreates the engine and reruns init_db,
+    # preventing a session cache from hiding a missing database commit.
+    restarted = create_app(database, seed=False)
+    calls = []
+
+    async def fake_connection(settings):
+        calls.append(("connection", settings.api_key))
+        return ConnectionFeedback(ok=True, message="模拟连接成功")
+
+    async def fake_precheck(**kwargs):
+        calls.append(("precheck", kwargs["settings"].api_key))
+        return PrecheckFeedback(correct_parts=[], wrong_parts=[], uncertain_parts=[],
+                                clarifying_questions=[], suggested_rewrite=None)
+
+    restarted.state.grading_service = SimpleNamespace(
+        test_connection=fake_connection, precheck=fake_precheck,
+    )
+    with TestClient(restarted) as second:
+        restored = second.get("/api/settings")
+        assert restored.json()["has_api_key"] is True
+        assert restored.json()["judge_count"] == 2
+        assert restored.json()["model"] == "isolated-test-model"
+        assert "api_key" not in restored.json()
+        assert fake_key not in restored.text
+        assert second.post("/api/settings/test", json={}).status_code == 200
+        assert second.post("/api/precheck", json={
+            "term": "测试术语", "definition": "测试定义",
+        }).status_code == 200
+        assert calls == [("connection", fake_key), ("precheck", fake_key)]
+        assert second.get("/api/settings").json()["has_api_key"] is True
+
+
 def test_invalid_weights_reject_whole_update_and_no_secret_echo(client):
     response = client.put("/api/settings", json={"w_accuracy": 0.9, "api_key": "must-not-leak"})
     assert response.status_code == 422

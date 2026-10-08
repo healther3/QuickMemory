@@ -68,14 +68,16 @@ def main():
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="启动轻记本地概念默写应用")
-    parser.add_argument("--port", type=int, default=8000, help="首选端口，默认 8000")
+    parser.add_argument("--port", type=int, help="覆盖已保存的首选端口，仅本次启动生效")
     parser.add_argument("--dev", action="store_true", help="启动 Vite 开发服务和后端")
     parser.add_argument("--build", action="store_true", help="启动前重新构建前端")
     parser.add_argument("--no-browser", action="store_true", help="启动时不自动打开浏览器")
     args = parser.parse_args()
-    if not 1024 <= args.port <= 65535:
+    if args.port is not None and not 1024 <= args.port <= 65535:
         parser.error("端口必须在 1024 到 65535 之间")
     ensure_environment()
+    from backend.local_service import read_preferences
+
     os.chdir(ROOT)
     try:
         lease = InstanceLease()
@@ -89,7 +91,8 @@ def main():
             return
         raise RuntimeError("轻记已经运行，请先关闭旧版启动窗口或回到原页面") from None
     try:
-        port = available_port(args.port)
+        preferred_port = args.port if args.port is not None else read_preferences(lease.database).preferred_port
+        port = available_port(preferred_port)
         page_port = port
         dev_process = None
         stop = threading.Event()
@@ -118,7 +121,10 @@ def main():
             app = create_app(lease.database)
             server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
                                                    proxy_headers=False, access_log=False))
-            attach_instance_routes(app, lease, lambda: setattr(server, "should_exit", True))
+            request_stop = lambda: setattr(server, "should_exit", True)
+            app.state.local_service_stop = request_stop
+            app.state.local_service_page_port = page_port
+            attach_instance_routes(app, lease, request_stop)
             lease.publish(port, page_port)
             server.run()
         finally:

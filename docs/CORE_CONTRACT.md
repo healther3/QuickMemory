@@ -46,3 +46,7 @@
 用户后续要求免命令行一键启动，新增 `desktop.py` 与原生 Windows 托盘入口。数据库结构和业务 API 不变；EXE 读取自身所在目录的 `data/quickmemory.db`，不会把持久数据写入 PyInstaller 临时解包目录。源码与桌面入口共用同一文件锁。
 
 启动器注册不进入 OpenAPI 的 `/api/_local_instance`：GET 验证同库运行实例，POST 请求有序退出。两者都需要保存在本机实例状态文件里的随机 256 位令牌；只通过环回地址访问，并继续受本地 Origin 限制。端口、数据库路径摘要与令牌用于重复启动协调，不是模型 API 密钥。状态文件在正常退出后移除。
+
+## 本地服务控制补充
+
+设置页新增 `GET/PUT /api/local-service`（当前地址、可否关闭及首选端口）与 `POST /api/local-service/stop`（有序关闭）。写请求继续受本地 Origin 限制；网页不接触实例令牌。只有 `desktop.py` / `run.py` 注入退出回调后允许网页关闭，直接 Uvicorn 启动时返回不支持。首选端口存放于数据库同目录 `launcher.json`，下次启动读取；命令行 `--port` 只覆盖当次。数据库结构、模型密钥和评分配置均不变。

@@ -45,6 +45,12 @@
 - `GET /error-types` → `{id,name}[]`；`POST /error-types`、`PUT /error-types/{id}` 输入 `{name}`；`DELETE /error-types/{id}`。重命名/删除同步现存历史反馈及关系。
 - `GET /health` → `{status:'ok',message,phase:4}`。
 
+## 本地服务控制
+
+- `GET /local-service` → `{port,page_port,can_stop,preferred_port}`，端口为整数；当前服务端口与下次启动的首选端口分别展示。
+- `PUT /local-service` 输入必填 `{preferred_port:1024..65535}` → 同 GET。保存到数据库同目录的 `launcher.json`，不立即重启；命令行 `--port` 可覆盖单次启动，首选端口被占用时沿用启动器的附近端口回退。
+- `POST /local-service/stop` → `{stopping:true,message}`，响应后请求有序退出。`desktop.py` 与 `run.py` 支持；直接 Uvicorn 启动未注入回调时返回 409。所有写操作沿用本地 Origin 限制，不返回实例控制令牌。
+
 ## 本地后台
 
 create_app(db_path=None, seed=True) 在 lifespan 建立数据库与服务。`app.state.session_factory` 提供 Session；`app.state.grading_service` 可注入模拟服务；`app.state.grading_queue` 后台队列使用 `enqueue(answer_id)` 非阻塞方法，`start()` 恢复遗留 pending，`stop()` 取消任务且保留持久状态供下次恢复。根应用集成。

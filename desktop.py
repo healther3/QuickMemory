@@ -12,6 +12,7 @@ import webbrowser
 
 from backend.launcher import (AlreadyRunning, InstanceLease, application_root, attach_instance_routes,
                               available_port, database_path, find_running, stop_running)
+from backend.local_service import read_preferences
 
 
 def show_error(message: str):
@@ -65,7 +66,8 @@ def run_application(args):
         import uvicorn
         from backend.main import create_app
 
-        port = available_port(args.port)
+        preferred_port = args.port if args.port is not None else read_preferences(database).preferred_port
+        port = available_port(preferred_port)
         url = f"http://localhost:{port}"
         app = create_app(database)
         server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
@@ -74,6 +76,8 @@ def run_application(args):
         def request_stop():
             server.should_exit = True
 
+        app.state.local_service_stop = request_stop
+        app.state.local_service_page_port = port
         attach_instance_routes(app, lease, request_stop)
         lease.publish(port)
 
@@ -81,10 +85,15 @@ def run_application(args):
             if server.started:
                 webbrowser.open(url)
 
+        def open_settings():
+            if server.started:
+                webbrowser.open(url + "/settings#local-service")
+
         if not args.no_tray:
             from desktop_tray import TrayIcon
             assets_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-            tray = TrayIcon(assets_root / "assets" / "quickmemory.ico", open_page, request_stop)
+            tray = TrayIcon(assets_root / "assets" / "quickmemory.ico", open_page, request_stop,
+                            on_settings=open_settings)
 
         def serve():
             try:
@@ -132,13 +141,13 @@ def run_application(args):
 
 def main():
     parser = argparse.ArgumentParser(description="轻记桌面启动器")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--port", type=int, help="覆盖已保存的首选端口，仅本次启动生效")
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--no-tray", action="store_true", help="用于自动验收")
     parser.add_argument("--stop", action="store_true", help="关闭同数据目录的正在运行实例")
     parser.add_argument("--self-test", metavar="REPORT", help="执行离线打包自检并写入报告")
     args = parser.parse_args()
-    if not 1024 <= args.port <= 65535:
+    if args.port is not None and not 1024 <= args.port <= 65535:
         parser.error("端口必须在 1024 到 65535 之间")
     stream = None
     try:

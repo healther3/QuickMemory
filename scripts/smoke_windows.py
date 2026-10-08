@@ -40,8 +40,11 @@ def main():
         options.append("--no-tray")
     opener = build_opener(ProxyHandler({}))
 
-    def start():
-        return subprocess.Popen(base + options, cwd=case, env=env, creationflags=flags,
+    def start(*, saved_port=False):
+        startup = ["--no-browser"] if saved_port else options
+        if saved_port and not args.tray:
+            startup.append("--no-tray")
+        return subprocess.Popen(base + startup, cwd=case, env=env, creationflags=flags,
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def ready(process):
@@ -55,10 +58,10 @@ def main():
             time.sleep(0.25)
         raise RuntimeError("应用启动超时")
 
-    def api(state, path, value=None):
+    def api(state, path, value=None, method=None):
         request = Request(f"http://127.0.0.1:{state['port']}/api/{path}",
                           data=None if value is None else json.dumps(value).encode(),
-                          headers={"Content-Type": "application/json"})
+                          headers={"Content-Type": "application/json"}, method=method)
         with opener.open(request, timeout=5) as response:
             return json.load(response)
 
@@ -68,6 +71,8 @@ def main():
         first = ready(process)
         assert api(first, "health")["status"] == "ok"
         assert api(first, "cards")["total"] == 10
+        controls = api(first, "local-service")
+        assert controls["can_stop"] and controls["port"] == first["port"]
         with opener.open(f"http://127.0.0.1:{first['port']}/settings") as response:
             assert b"<title>" in response.read()
         duplicate = start()
@@ -75,19 +80,26 @@ def main():
         assert find_running(database)["pid"] == first["pid"]
         name = "打包持久化检查-" + str(time.time_ns())
         api(first, "tags", {"name": name})
+        preferred_port = available_port(port + 5)
+        saved = api(first, "local-service", {"preferred_port": preferred_port}, "PUT")
+        assert saved["preferred_port"] == preferred_port
+        assert saved["port"] == first["port"]  # Saving does not disrupt the running app.
         closing = subprocess.run(base + ["--stop"], cwd=case, env=env, creationflags=flags,
                                  timeout=120, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         assert closing.returncode == 0
         assert process.wait(timeout=20) == 0
         assert find_running(database) is None
-        process = start()
+        process = start(saved_port=True)
         second = ready(process)
+        assert second["port"] == preferred_port
         assert any(tag["name"] == name for tag in api(second, "tags"))
-        assert stop_running(second)
+        assert api(second, "local-service/stop", {}, "POST")["stopping"] is True
         assert process.wait(timeout=20) == 0
+        assert find_running(database) is None
         report = {"ok": True, "frozen": not args.source, "tray": args.tray,
                   "isolated_path": True, "static_page": True, "duplicate_reused": True,
-                  "graceful_shutdown": True, "restart_persistence": True}
+                  "graceful_shutdown": True, "restart_persistence": True,
+                  "saved_port_on_restart": True, "web_shutdown": True}
         (case / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
         print(json.dumps(report))
     finally:

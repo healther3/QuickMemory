@@ -67,7 +67,7 @@ WM_TITLE = 0x8002
 WM_STOP = 0x8003
 NIM_ADD, NIM_MODIFY, NIM_DELETE, NIM_SETVERSION = 0, 1, 2, 4
 NIF_MESSAGE, NIF_ICON, NIF_TIP, NIF_SHOWTIP = 1, 2, 4, 0x80
-OPEN_COMMAND, QUIT_COMMAND = 1001, 1002
+OPEN_COMMAND, QUIT_COMMAND, SETTINGS_COMMAND = 1001, 1002, 1003
 
 
 class TrayIcon:
@@ -77,11 +77,13 @@ class TrayIcon:
     removes the tray without calling ``on_quit``; the menu calls ``on_quit`` once.
     """
 
-    def __init__(self, icon_path: Path, on_open: Callable[[], None], on_quit: Callable[[], None]):
+    def __init__(self, icon_path: Path, on_open: Callable[[], None], on_quit: Callable[[], None],
+                 on_settings: Callable[[], None] | None = None):
         if os.name != "nt":
             raise RuntimeError("系统托盘入口仅支持 Windows")
         self.icon_path = Path(icon_path).resolve()
         self.on_open, self.on_quit = on_open, on_quit
+        self.on_settings = on_settings
         self._title = "轻记 · 正在启动"
         self._title_lock = threading.Lock()
         self._stopped = threading.Event()
@@ -192,8 +194,11 @@ class TrayIcon:
         if not menu:
             self._fail("无法创建轻记托盘菜单")
         try:
-            for flags, item, label in [(0, OPEN_COMMAND, "打开轻记"),
-                                       (0x0800, 0, None), (0, QUIT_COMMAND, "退出轻记")]:
+            items = [(0, OPEN_COMMAND, "打开轻记")]
+            if self.on_settings:
+                items.append((0, SETTINGS_COMMAND, "服务设置（端口与关闭）"))
+            items.extend([(0x0800, 0, None), (0, QUIT_COMMAND, "退出轻记")])
+            for flags, item, label in items:
                 if not self._user.AppendMenuW(menu, flags, item, label):
                     self._fail("无法创建轻记托盘菜单")
             self._user.SetMenuDefaultItem(menu, OPEN_COMMAND, False)
@@ -209,6 +214,8 @@ class TrayIcon:
             self._user.DestroyMenu(menu)
         if choice == OPEN_COMMAND:
             self.on_open()
+        elif choice == SETTINGS_COMMAND and self.on_settings:
+            self.on_settings()
         elif choice == QUIT_COMMAND:
             self._request_quit()
         else:

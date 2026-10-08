@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "轻记 · 本地概念默写",
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "paths": {
     "/api/health": {
@@ -1486,6 +1486,87 @@
           }
         }
       }
+    },
+    "/api/local-service": {
+      "get": {
+        "tags": [
+          "本地服务"
+        ],
+        "summary": "Get Local Service",
+        "operationId": "get_local_service_api_local_service_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalServiceView"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "本地服务"
+        ],
+        "summary": "Update Local Service",
+        "operationId": "update_local_service_api_local_service_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalServiceInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalServiceView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/local-service/stop": {
+      "post": {
+        "tags": [
+          "本地服务"
+        ],
+        "summary": "Stop Local Service",
+        "operationId": "stop_local_service_api_local_service_stop_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalServiceStopView"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2547,6 +2628,68 @@
           "error_type_ids"
         ],
         "title": "LabelUpdate"
+      },
+      "LocalServiceInput": {
+        "properties": {
+          "preferred_port": {
+            "type": "integer",
+            "maximum": 65535.0,
+            "minimum": 1024.0,
+            "title": "Preferred Port"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "preferred_port"
+        ],
+        "title": "LocalServiceInput"
+      },
+      "LocalServiceStopView": {
+        "properties": {
+          "stopping": {
+            "type": "boolean",
+            "title": "Stopping"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stopping",
+          "message"
+        ],
+        "title": "LocalServiceStopView"
+      },
+      "LocalServiceView": {
+        "properties": {
+          "port": {
+            "type": "integer",
+            "title": "Port"
+          },
+          "page_port": {
+            "type": "integer",
+            "title": "Page Port"
+          },
+          "can_stop": {
+            "type": "boolean",
+            "title": "Can Stop"
+          },
+          "preferred_port": {
+            "type": "integer",
+            "title": "Preferred Port"
+          }
+        },
+        "type": "object",
+        "required": [
+          "port",
+          "page_port",
+          "can_stop",
+          "preferred_port"
+        ],
+        "title": "LocalServiceView"
       },
       "NameInput": {
         "properties": {

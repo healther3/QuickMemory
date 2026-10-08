@@ -16,6 +16,7 @@ import {
   type Settings as SettingsData,
 } from "../api";
 import NamedManager from "../NamedManager";
+import LocalService from "../LocalService";
 import { ErrorBox, Loading, PageHeader, Status } from "../ui";
 export default function Settings() {
   const loaded = useLoad<SettingsData>("/settings"),
@@ -95,8 +96,9 @@ export default function Settings() {
       <PageHeader
         eyebrow="让工具适合你的学习方式"
         title="设置"
-        description="连接自己的模型服务，定义评分方式和错误类型。"
+        description="管理本地服务，连接自己的模型，定义评分方式和错误类型。"
       />
+      <LocalService />
       <ErrorBox
         error={error || loaded.error || providers.error}
         onRetry={

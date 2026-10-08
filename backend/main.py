@@ -13,6 +13,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from backend.database import init_db, make_engine, make_session_factory
+from backend.launcher import database_path
+from backend.local_service import LauncherPreferences
 from backend.seed import seed_once
 from backend.services.grading import GradingService
 
@@ -29,6 +31,7 @@ def create_app(db_path: str | Path | None = None, seed: bool = True) -> FastAPI:
         if seed:
             seed_once(factory)
         app.state.engine = engine
+        app.state.local_service_database = str(engine.url.database)
         app.state.session_factory = factory
         app.state.utility_llm_semaphore = asyncio.Semaphore(2)
         queue = GradingQueue(factory, app.state.grading_service, workers=2)
@@ -40,9 +43,11 @@ def create_app(db_path: str | Path | None = None, seed: bool = True) -> FastAPI:
             await queue.stop()
             engine.dispose()
 
-    app = FastAPI(title="轻记 · 本地概念默写", version="1.0.0", lifespan=lifespan,
+    app = FastAPI(title="轻记 · 本地概念默写", version="1.1.0", lifespan=lifespan,
                   docs_url=None, redoc_url=None)
     app.state.grading_service = GradingService()
+    app.state.local_service_database = str(db_path) if db_path is not None else str(database_path())
+    app.state.local_service_preferences = LauncherPreferences()
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "[::1]", "testserver"])
 
     @app.middleware("http")
@@ -72,7 +77,7 @@ def create_app(db_path: str | Path | None = None, seed: bool = True) -> FastAPI:
         names = {"term": "术语", "definition": "参考定义", "name": "名称", "user_answer": "作答内容",
                  "time_spent_ms": "作答用时", "content": "题库内容", "api_key": "API 密钥",
                  "judge_count": "裁判数量", "folder_ids": "所属文件夹", "folder_id": "文件夹",
-                 "tags": "用户标签", "reference_note": "参考笔记"}
+                 "tags": "用户标签", "reference_note": "参考笔记", "preferred_port": "网页端口"}
         fields = list(dict.fromkeys(names.get(str(error["loc"][-1]), "输入参数") for error in exc.errors()))
         return JSONResponse({"detail": "、".join(fields) + "格式不正确，请检查必填项、数据类型及长度范围"}, status_code=422)
 
@@ -88,8 +93,8 @@ def create_app(db_path: str | Path | None = None, seed: bool = True) -> FastAPI:
     def health():
         return {"status": "ok", "message": "本地服务已就绪", "phase": 4}
 
-    from backend.api import catalog, exams, imports, settings, stats
-    for module in (catalog, imports, exams, stats, settings):
+    from backend.api import catalog, exams, imports, local_service, settings, stats
+    for module in (catalog, imports, exams, stats, settings, local_service):
         app.include_router(module.router, prefix="/api")
 
     @app.get("/{path:path}", include_in_schema=False)

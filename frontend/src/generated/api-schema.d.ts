@@ -440,6 +440,41 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/local-service": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Local Service */
+    get: operations["get_local_service_api_local_service_get"];
+    /** Update Local Service */
+    put: operations["update_local_service_api_local_service_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/local-service/stop": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Stop Local Service */
+    post: operations["stop_local_service_api_local_service_stop_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -804,6 +839,29 @@ export interface components {
     LabelUpdate: {
       /** Error Type Ids */
       error_type_ids: number[];
+    };
+    /** LocalServiceInput */
+    LocalServiceInput: {
+      /** Preferred Port */
+      preferred_port: number;
+    };
+    /** LocalServiceStopView */
+    LocalServiceStopView: {
+      /** Stopping */
+      stopping: boolean;
+      /** Message */
+      message: string;
+    };
+    /** LocalServiceView */
+    LocalServiceView: {
+      /** Port */
+      port: number;
+      /** Page Port */
+      page_port: number;
+      /** Can Stop */
+      can_stop: boolean;
+      /** Preferred Port */
+      preferred_port: number;
     };
     /** NameInput */
     NameInput: {
@@ -2108,6 +2166,79 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_local_service_api_local_service_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LocalServiceView"];
+        };
+      };
+    };
+  };
+  update_local_service_api_local_service_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["LocalServiceInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LocalServiceView"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  stop_local_service_api_local_service_stop_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LocalServiceStopView"];
         };
       };
     };

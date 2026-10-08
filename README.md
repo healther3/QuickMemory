@@ -12,7 +12,11 @@
 2. 将 EXE 放在一个可写的独立文件夹中，双击启动。无需安装 Python 或 Node.js，也不需要命令行；稍等几秒会自动打开浏览器。
 3. 在“设置”中填写自己的模型服务商、API 密钥和模型名称，即可使用 AI 核对与评分。
 
-运行时右下角系统托盘有书本图标（可能收在 `^` 中）：双击重新打开界面，右键选择“退出轻记”彻底关闭。关闭浏览器页面不会退出后台服务。重复双击 EXE 会打开已有实例。可用 PowerShell 的 `Get-FileHash .\QuickMemory.exe -Algorithm SHA256` 与 Release 附带的 SHA256 摘要核对下载文件。
+运行时可在网页 **设置 → 本地服务 → 关闭本地服务** 中停止后台，或右键右下角系统托盘的书本图标（可能收在 `^` 中）选择“退出轻记”。关闭浏览器页面不会退出后台服务；再次双击 EXE 启动。重复双击 EXE 会打开已有实例。程序不会自行注册 Windows 开机启动。
+
+在 **设置 → 本地服务** 中可查看当前网页地址，并修改首选端口（1024–65535）。点击“保存端口”后，关闭服务并重新双击 EXE，新端口才生效；端口被占用时会尝试附近可用端口，页面显示实际地址。端口保存在 `data/launcher.json`，源码入口也读取同一配置；命令行 `--port` 仅覆盖当次启动。托盘菜单也提供“服务设置（端口与关闭）”入口。
+
+可用 PowerShell 的 `Get-FileHash .\QuickMemory.exe -Algorithm SHA256` 与 Release 附带的 SHA256 摘要核对下载文件。
 
 题库、历史和模型设置继续保存在 **EXE 同级的 `data` 文件夹**。更新时退出轻记、替换 EXE 即可，保留 `data`；移动到其他文件夹或电脑时，将 EXE 和 `data` 一起移动。单独复制 EXE 会在新位置创建全新题库。EXE 本身不含你的数据库或 API Key，日志位于同级 `logs`。
 
@@ -37,7 +41,7 @@ npm --prefix frontend run build
 完成安装后，Windows 日常可双击 **`启动轻记.cmd`**，或运行 `python run.py`。启动器会优先使用项目 `.venv`，启动本机服务并自动打开 `http://localhost:8000`。端口占用时自动选择附近端口；Ctrl+C 关闭。启动器对数据库加实例锁，避免重复启动产生重复评分任务。已有 `node_modules` 但缺少 `dist` 时会自动构建。
 
 ```powershell
-python run.py --port 8080         # 指定首选端口
+python run.py --port 8080         # 本次使用 8080，不修改已保存的端口
 python run.py --no-browser        # 不自动打开浏览器
 python run.py --build             # 重新构建前端后启动
 python run.py --dev               # 同时运行 Vite + FastAPI，自动配置本地代理

@@ -27,6 +27,7 @@ beforeEach(() => {
   handler = (path, method, body) => {
     if(path==='/api/settings') return method==='PUT'?{...config,...body,api_key:undefined,has_api_key:!!body.api_key}:config;
     if(path==='/api/providers') return [{id:'deepseek',name:'DeepSeek',base_url:config.base_url,suggested_model:config.model}];
+    if(path==='/api/local-service') return {port:8000,page_port:8000,can_stop:true,preferred_port:8000};
     if(path==='/api/error-types') return method==='POST'?{id:3,name:body.name}:labels;
     if(path==='/api/folders') return folders;
     if(path==='/api/tags') return [];
@@ -47,6 +48,96 @@ function route(element: React.ReactNode, path='/') {
 }
 
 describe('设置与卡片编辑', () => {
+  it('网页端口独立保存并在再次进入时恢复，当前地址保持不变', async () => {
+    let service={port:8000,page_port:8000,can_stop:true,preferred_port:8000};
+    const previous=handler;
+    handler=(path,method,body)=>{
+      if(path==='/api/local-service') {
+        if(method==='PUT') service={...service,...body};
+        return service;
+      }
+      return previous(path,method,body);
+    };
+    const first=route(<Settings/>);
+    const port=await screen.findByRole('spinbutton',{name:'下次启动端口'});
+    await userEvent.clear(port);
+    await userEvent.type(port,'8080');
+    await userEvent.click(screen.getByRole('button',{name:'保存端口'}));
+    await screen.findByText(/首选端口 8080 已保存/);
+    expect(screen.getByRole('link',{name:'http://localhost:8000'}).getAttribute('href')).toBe('http://localhost:8000');
+    expect(calls.find(c=>c.path==='/api/local-service'&&c.method==='PUT')?.body).toEqual({preferred_port:8080});
+    expect(calls.filter(c=>c.path==='/api/settings'&&c.method==='PUT')).toHaveLength(0);
+    expect(calls.filter(c=>c.path==='/api/local-service/stop')).toHaveLength(0);
+    first.unmount();
+    route(<Settings/>);
+    expect((await screen.findByRole('spinbutton',{name:'下次启动端口'}) as HTMLInputElement).value).toBe('8080');
+    await screen.findByText('下次启动将优先使用端口 8080。');
+  });
+
+  it('关闭本地服务须确认，成功后保留重新启动提示', async () => {
+    const previous=handler;
+    handler=(path,method,body)=>path==='/api/local-service/stop'?{stopping:true}:previous(path,method,body);
+    vi.mocked(window.confirm).mockReturnValueOnce(false).mockReturnValueOnce(true);
+    route(<Settings/>);
+    const close=await screen.findByRole('button',{name:'关闭本地服务'});
+    await userEvent.click(close);
+    expect(calls.filter(c=>c.path==='/api/local-service/stop')).toHaveLength(0);
+    await userEvent.click(close);
+    await screen.findByText('已请求关闭本地服务');
+    expect(screen.getByText(/需要使用时，再次双击/)).toBeTruthy();
+    expect(calls.filter(c=>c.path==='/api/local-service/stop'&&c.method==='POST')).toHaveLength(1);
+    expect(screen.queryByRole('button',{name:'关闭本地服务'})).toBeNull();
+    expect(screen.queryByText('服务已关闭')).toBeNull();
+  });
+
+  it('端口保存和关闭失败保留输入与重试操作', async () => {
+    const previous=handler;
+    let stops=0;
+    handler=(path,method,body)=>{
+      if(path==='/api/local-service'&&method==='PUT') throw new TypeError('模拟保存失败');
+      if(path==='/api/local-service/stop') {
+        if(++stops===1) throw new TypeError('模拟关闭失败');
+        return {stopping:true};
+      }
+      return previous(path,method,body);
+    };
+    route(<Settings/>);
+    const port=await screen.findByRole('spinbutton',{name:'下次启动端口'});
+    await userEvent.clear(port);
+    await userEvent.type(port,'8081');
+    await userEvent.click(screen.getByRole('button',{name:'保存端口'}));
+    await screen.findByRole('alert');
+    expect((port as HTMLInputElement).value).toBe('8081');
+    expect((screen.getByRole('button',{name:'保存端口'}) as HTMLButtonElement).disabled).toBe(false);
+    await userEvent.click(screen.getByRole('button',{name:'关闭本地服务'}));
+    await screen.findByRole('alert');
+    expect(screen.queryByText('已请求关闭本地服务')).toBeNull();
+    await userEvent.click(screen.getByRole('button',{name:'关闭本地服务'}));
+    await screen.findByText('已请求关闭本地服务');
+    expect(stops).toBe(2);
+  });
+
+  it('服务信息失败不阻断模型设置，重试后展示不支持网页关闭的原因', async () => {
+    const previous=handler;
+    let reads=0;
+    handler=(path,method,body)=>{
+      if(path==='/api/local-service') {
+        if(++reads===1) throw new TypeError('模拟状态读取失败');
+        return {port:8000,page_port:5173,can_stop:false,preferred_port:8000};
+      }
+      return previous(path,method,body);
+    };
+    route(<Settings/>);
+    await screen.findByRole('alert');
+    expect(await screen.findByPlaceholderText('输入 API 密钥')).toBeTruthy();
+    expect((screen.getByRole('button',{name:'保存设置'}) as HTMLButtonElement).disabled).toBe(false);
+    await userEvent.click(screen.getByRole('button',{name:'重试'}));
+    const close=await screen.findByRole('button',{name:'关闭本地服务'});
+    expect((close as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/当前启动方式不支持从网页关闭/)).toBeTruthy();
+    expect(screen.getByRole('link',{name:'http://localhost:5173'}).getAttribute('href')).toBe('http://localhost:5173');
+  });
+
   it('错误类型操作不会提交模型设置，也不存在嵌套表单', async () => {
     route(<Settings/>);
     const name=await screen.findByRole('textbox',{name:'新增名称'});
