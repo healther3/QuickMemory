@@ -92,7 +92,7 @@ def main():
         if not npm:
             parser.error("重建前端需要 Node.js；已有生产构建可添加 --skip-frontend")
         subprocess.run([npm, "run", "build"], cwd=ROOT / "frontend", check=True)
-    for file in ("desktop.py", "desktop_tray.py", "backend/frozen_check.py", "frontend/dist/index.html", "examples/ml_terms.json"):
+    for file in ("desktop.py", "desktop_window.py", "desktop_tray.py", "backend/frozen_check.py", "frontend/dist/index.html", "examples/ml_terms.json"):
         if not (ROOT / file).is_file():
             parser.error(f"缺少构建文件：{file}")
     icon = ROOT / "assets" / "quickmemory.ico"

@@ -21,16 +21,16 @@ def test_preferred_port_survives_restart_without_changing_running_port(tmp_path)
     with TestClient(first, base_url="http://localhost:8123") as client:
         initial = client.get("/api/local-service")
         assert initial.status_code == 200
-        assert initial.json() == {"port": 8123, "page_port": 5173, "can_stop": False, "preferred_port": 8000}
+        assert initial.json() == {"port": 8123, "page_port": 5173, "can_stop": False, "desktop_window": False, "preferred_port": 8000}
         saved = client.put("/api/local-service", json={"preferred_port": 9011})
         assert saved.status_code == 200
-        assert saved.json() == {"port": 8123, "page_port": 5173, "can_stop": False, "preferred_port": 9011}
+        assert saved.json() == {"port": 8123, "page_port": 5173, "can_stop": False, "desktop_window": False, "preferred_port": 9011}
         assert client.get("/api/health").status_code == 200
 
     # A new application/engine must read the independent disk configuration.
     with TestClient(create_app(database, seed=False), base_url="http://localhost:9011") as restarted:
         current = restarted.get("/api/local-service").json()
-        assert current == {"port": 9011, "page_port": 9011, "can_stop": False, "preferred_port": 9011}
+        assert current == {"port": 9011, "page_port": 9011, "can_stop": False, "desktop_window": False, "preferred_port": 9011}
     assert json.loads(preferences_path(database).read_text(encoding="utf-8")) == {"preferred_port": 9011}
     assert read_preferences(database).preferred_port == 9011
 
@@ -97,6 +97,8 @@ def test_stop_uses_launcher_callback_without_disclosing_instance_token(tmp_path)
     with TestClient(app, base_url="http://localhost:8123") as client:
         assert client.post("/api/local-service/stop").status_code == 409
         app.state.local_service_stop = lambda: calls.append("stop")
+        app.state.local_service_desktop_window = True
+        assert client.get("/api/local-service").json()["desktop_window"] is True
         assert client.get("/api/local-service").json()["can_stop"] is True
         response = client.post("/api/local-service/stop", headers={"origin": "http://localhost:8123"})
         assert response.status_code == 200

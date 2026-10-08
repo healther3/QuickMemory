@@ -65,6 +65,12 @@ export default function Editor() {
   }, [loaded.data]);
   const dirty = JSON.stringify(form) !== initial.current || !!tagInput.trim();
   useEffect(() => {
+    window.__quickMemoryHasUnsavedChanges = dirty;
+    return () => {
+      window.__quickMemoryHasUnsavedChanges = false;
+    };
+  }, [dirty]);
+  useEffect(() => {
     if (!dirty) return;
     const guard = (e: BeforeUnloadEvent) => {
       e.preventDefault();

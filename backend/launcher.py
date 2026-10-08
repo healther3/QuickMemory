@@ -20,7 +20,9 @@ def application_root() -> Path:
 
 
 def database_path() -> Path:
-    return Path(os.environ.get("QUICKMEMORY_DB", application_root() / "data" / "quickmemory.db")).expanduser().resolve()
+    from backend.desktop_paths import runtime_root
+
+    return Path(os.environ.get("QUICKMEMORY_DB", runtime_root() / "data" / "quickmemory.db")).expanduser().resolve()
 
 
 def database_identity(path: Path) -> str:
@@ -155,7 +157,26 @@ def stop_running(state: dict) -> bool:
     return _request_instance(state, stop=True).get("stopping") is True
 
 
-def attach_instance_routes(app, lease: InstanceLease, on_stop):
+def activate_running(state: dict) -> bool:
+    """请求已有桌面窗口回到前台；旧版实例没有此路由，不会误触发退出。"""
+    if os.name == "nt" and type(state.get("pid")) is int and 0 < state["pid"] < 2**32:
+        # The user's second launch may transfer its foreground permission to the
+        # existing process. Windows otherwise only flashes its taskbar button.
+        try:
+            import ctypes
+            ctypes.windll.user32.AllowSetForegroundWindow(state["pid"])
+        except (OSError, AttributeError):
+            pass
+    request = Request(f"http://127.0.0.1:{state['port']}/api/_local_instance/activate",
+                      headers={"X-QuickMemory-Instance": state["token"]}, method="POST", data=b"")
+    try:
+        with build_opener(ProxyHandler({})).open(request, timeout=2) as response:
+            return json.load(response).get("activated") is True
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def attach_instance_routes(app, lease: InstanceLease, on_stop, on_activate=None):
     from starlette.responses import JSONResponse
     from starlette.routing import Route
 
@@ -163,6 +184,10 @@ def attach_instance_routes(app, lease: InstanceLease, on_stop):
         supplied = request.headers.get("X-QuickMemory-Instance", "")
         if not hmac.compare_digest(supplied.encode("utf-8"), lease.token.encode("ascii")):
             return JSONResponse({"detail": "无效的本机实例请求"}, status_code=403)
+        if request.url.path.endswith("/activate"):
+            if on_activate is None:
+                return JSONResponse({"activated": False}, status_code=409)
+            return JSONResponse({"activated": bool(on_activate())})
         if request.method == "POST":
             on_stop()
             return JSONResponse({"stopping": True})
@@ -170,3 +195,4 @@ def attach_instance_routes(app, lease: InstanceLease, on_stop):
 
     # 位于静态 SPA catch-all 之前；不改变业务 OpenAPI 契约。
     app.router.routes.insert(0, Route("/api/_local_instance", control, methods=["GET", "POST"]))
+    app.router.routes.insert(0, Route("/api/_local_instance/activate", control, methods=["POST"]))

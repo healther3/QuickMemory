@@ -9,16 +9,20 @@
 ## Windows 一键启动
 
 1. 打开 [GitHub Releases](https://github.com/healther3/QuickMemory/releases/latest)，推荐下载 Windows ZIP 并解压，内含 `QuickMemory.exe` 和许可说明；也提供独立 EXE。GitHub 自动生成的源码压缩包不包含可执行程序。
-2. 将 EXE 放在一个可写的独立文件夹中，双击启动。无需安装 Python 或 Node.js，也不需要命令行；稍等几秒会自动打开浏览器。
+2. 将 EXE 放在一个可写的独立文件夹中，双击启动。无需安装 Python 或 Node.js，也不需要命令行；稍等几秒会打开独立的轻记窗口。需要 Microsoft Edge WebView2 Runtime（多数 Windows 电脑已安装）；缺失时按提示安装 [微软官方运行时](https://developer.microsoft.com/microsoft-edge/webview2/)。
 3. 在“设置”中填写自己的模型服务商、API 密钥和模型名称，即可使用 AI 核对与评分。
 
-运行时可在网页 **设置 → 本地服务 → 关闭本地服务** 中停止后台，或右键右下角系统托盘的书本图标（可能收在 `^` 中）选择“退出轻记”。关闭浏览器页面不会退出后台服务；再次双击 EXE 启动。重复双击 EXE 会打开已有实例。程序不会自行注册 Windows 开机启动。
+默认以独立桌面窗口运行，不会打开外部浏览器。关闭窗口或点击 **设置 → 应用运行 → 退出轻记** 会同时停止后台；最小化时继续运行。重复双击会唤起已有窗口，未保存的卡片编辑会在关闭前提示。程序不会自行注册 Windows 开机启动。
 
-在 **设置 → 本地服务** 中可查看当前网页地址，并修改首选端口（1024–65535）。点击“保存端口”后，关闭服务并重新双击 EXE，新端口才生效；端口被占用时会尝试附近可用端口，页面显示实际地址。端口保存在 `data/launcher.json`，源码入口也读取同一配置；命令行 `--port` 仅覆盖当次启动。托盘菜单也提供“服务设置（端口与关闭）”入口。
+需要原浏览器模式时使用 `QuickMemory.exe --browser`，该模式保留系统托盘和网页关闭服务入口，关闭浏览器标签页不会停止后台。源码入口 `run.py` 仍使用浏览器。
+
+在 **设置 → 应用运行** 中可查看本地服务地址，并修改首选端口（1024–65535）。点击“保存端口”后，关闭服务并重新双击 EXE，新端口才生效；端口被占用时会尝试附近可用端口，页面显示实际地址。端口保存在 `data/launcher.json`，源码入口也读取同一配置；命令行 `--port` 仅覆盖当次启动。浏览器模式的托盘菜单也提供“服务设置（端口与关闭）”入口。
 
 可用 PowerShell 的 `Get-FileHash .\QuickMemory.exe -Algorithm SHA256` 与 Release 附带的 SHA256 摘要核对下载文件。
 
-题库、历史和模型设置继续保存在 **EXE 同级的 `data` 文件夹**。更新时退出轻记、替换 EXE 即可，保留 `data`；移动到其他文件夹或电脑时，将 EXE 和 `data` 一起移动。单独复制 EXE 会在新位置创建全新题库。EXE 本身不含你的数据库或 API Key，日志位于同级 `logs`。
+题库、历史和模型设置继续保存在 **EXE 同级的 `data` 文件夹**。更新时退出轻记、替换 EXE 即可，保留 `data`；移动到其他文件夹或电脑时，将 EXE 和 `data` 一起移动。单独复制 EXE 会在新位置创建全新题库。EXE 本身不含你的数据库或 API Key，日志位于同级 `logs`，窗口缓存和答题草稿位于同级 `webview`。
+
+Microsoft Store 上架准备见 [Windows 商店发布说明](docs/WINDOWS_STORE.md)。仓库提供 MSIX 构建脚本；目前生成的开发身份包未签名、未提交商店，不能当作正式安装包。商店版的数据将存放在当前用户的 `LocalState/data`，与便携版目录独立。
 
 ## 从源码首次安装
 
@@ -34,7 +38,7 @@ npm --prefix frontend run build
 .\.venv\Scripts\python.exe run.py
 ```
 
-如果 Windows 的 Python 命令是 `py`，创建环境使用 `py -3 -m venv .venv`。macOS / Linux 使用 `python3` 创建环境，将 `.\.venv\Scripts\python.exe` 替换为 `.venv/bin/python`。Windows 可执行发行包仅适用于 Windows，其他平台使用源码入口。
+如果 Windows 的 Python 命令是 `py`，创建环境使用 `py -3 -m venv .venv`。macOS / Linux 使用 `python3` 创建环境，将 `.\.venv\Scripts\python.exe` 替换为 `.venv/bin/python`。Windows 可执行发行包仅适用于 Windows，其他平台使用源码入口。在 Windows 已安装依赖并构建前端后，也可运行 `.venv\Scripts\python.exe desktop.py` 测试独立窗口。
 
 首次安装依赖需要网络，运行时不自动安装依赖。锁定的 Python 依赖记录在 `requirements-lock.txt`，前端锁定在 `frontend/package-lock.json`。
 
@@ -116,7 +120,7 @@ npm --prefix frontend run dev
 
 完整 API 路由见 [docs/API_CONTRACT.md](docs/API_CONTRACT.md)，生成的机器契约为 [docs/openapi.json](docs/openapi.json)；运行中可访问 `/openapi.json`。为避免访问 CDN，默认 Swagger/ReDoc 页面关闭。
 
-当前验证记录为 **162 项后端测试、7 项前端交互测试通过**，并通过 TypeScript 检查、生产构建和 Windows 冻结程序自检。自动化评分测试使用模拟 LLM，不消耗真实额度；尚未验证真实服务商连通性及真实评分语义质量。具体已执行验证与限制见 [docs/VALIDATION.md](docs/VALIDATION.md)。自行验证真实模型可使用：
+已通过后端测试、前端交互测试、TypeScript 检查、生产构建和 Windows 冻结程序自检。自动化评分测试使用模拟 LLM，不消耗真实额度；尚未验证真实服务商连通性及真实评分语义质量。具体已执行验证与限制见 [docs/VALIDATION.md](docs/VALIDATION.md)。自行验证真实模型可使用：
 
 ```powershell
 .\.venv\Scripts\python.exe -m backend.cli.configure --provider deepseek --prompt-key --save
@@ -136,7 +140,7 @@ npm --prefix frontend run dev
 
 构建生成 `dist/QuickMemory.exe`，并复制为根目录 `轻记.exe`。配方只打包代码、运行库、网页资源、图标和示例题库。原业务数据库、密钥、日志和测试数据不进入包。构建日志为 `build/windows-build.log`；版本摘要和 SHA256 在 `dist/release.json`。已有最新网页构建时可添加 `--skip-frontend`。
 
-发行包提供独立离线自检：`轻记.exe --self-test 报告.json`，使用内存数据库和本机模拟接口检查冻结环境中的 LiteLLM、SQLite、资源和评分流程。开发验收脚本 `scripts/smoke_windows.py` 会使用独立 `.qa` 数据库检查重复启动、持久化、静态页和退出；`--tray` 同时启动实际 Windows 托盘。
+发行包提供独立离线自检：`轻记.exe --self-test 报告.json`，使用内存数据库和本机模拟接口检查冻结环境中的 LiteLLM、SQLite、资源和评分流程。开发验收脚本 `scripts/smoke_windows.py` 会使用独立 `.qa` 数据库检查重复启动、持久化、静态页和退出；`--tray` 同时启动实际 Windows 托盘，`--desktop` 验证真实 WebView2 窗口加载、重复唤起、端口保存重启和退出。独立窗口需要允许 WebView2 子进程正常运行的桌面环境。
 
 ## 项目结构与上下文
 
@@ -149,7 +153,8 @@ scripts/              OpenAPI 导出、Windows 构建与发行验收
 design-system/        ui-ux-pro-max 设计规范与研究记录
 docs/                 原始需求、API 契约、阶段记录与验证
 run.py                本地一键启动及开发模式
-desktop.py            无控制台桌面入口、自动打开与重复启动处理
+desktop.py            无控制台桌面入口、本机服务与重复启动处理
+desktop_window.py     WebView2 独立窗口与生命周期
 desktop_tray.py       Windows 托盘图标和退出菜单
 QuickMemory.spec      独立 EXE 构建配方
 启动轻记.cmd          Windows 双击入口

@@ -18,13 +18,15 @@ from backend.launcher import available_port, find_running, stop_running
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("executable", type=Path)
-    parser.add_argument("--tray", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--tray", action="store_true")
+    mode.add_argument("--desktop", action="store_true", help="验证真实 WebView2 桌面窗口及重复启动激活")
     parser.add_argument("--source", action="store_true")
     args = parser.parse_args()
     executable = args.executable.resolve()
     base = [str(executable), str(ROOT / "desktop.py")] if args.source else [str(executable)]
     case = ROOT / ".qa" / ("source-launcher" if args.source else "frozen-launcher")
-    case = case / ("tray" if args.tray else "background")
+    case = case / ("desktop" if args.desktop else "tray" if args.tray else "background")
     case.mkdir(parents=True, exist_ok=True)
     database = case / "quickmemory.db"
     env = dict(os.environ)
@@ -35,17 +37,28 @@ def main():
         env["PATH"] = str(Path(os.environ["SystemRoot"]) / "System32")
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     port = available_port(8030)
-    options = ["--no-browser", "--port", str(port)]
-    if not args.tray:
-        options.append("--no-tray")
     opener = build_opener(ProxyHandler({}))
+    log_file = case / "logs" / "launcher.log"
+    log_offsets = {}
 
     def start(*, saved_port=False):
-        startup = ["--no-browser"] if saved_port else options
-        if saved_port and not args.tray:
+        startup = [] if args.desktop else ["--no-browser"]
+        if not saved_port:
+            startup.extend(["--port", str(port)])
+        if not args.tray:
             startup.append("--no-tray")
-        return subprocess.Popen(base + startup, cwd=case, env=env, creationflags=flags,
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        offset = log_file.stat().st_size if log_file.exists() else 0
+        process = subprocess.Popen(base + startup, cwd=case, env=env, creationflags=flags,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        log_offsets[process.pid] = offset
+        return process
+
+    def desktop_events(process):
+        if not log_file.exists():
+            return ""
+        with log_file.open("rb") as stream:
+            stream.seek(log_offsets[process.pid])
+            return stream.read().decode("utf-8", errors="replace")
 
     def ready(process):
         deadline = time.monotonic() + 120
@@ -54,7 +67,13 @@ def main():
                 raise RuntimeError(f"应用提前退出，code={process.returncode}，请检查 logs/launcher.log")
             state = find_running(database)
             if state:
-                return state
+                if not args.desktop:
+                    return state
+                events = desktop_events(process)
+                if ("桌面窗口：renderer=edgechromium" in events
+                        and "桌面窗口：navigation completed=True" in events
+                        and "桌面窗口：loaded" in events):
+                    return state
             time.sleep(0.25)
         raise RuntimeError("应用启动超时")
 
@@ -73,6 +92,7 @@ def main():
         assert api(first, "cards")["total"] == 10
         controls = api(first, "local-service")
         assert controls["can_stop"] and controls["port"] == first["port"]
+        assert controls["desktop_window"] is args.desktop
         with opener.open(f"http://127.0.0.1:{first['port']}/settings") as response:
             assert b"<title>" in response.read()
         duplicate = start()
@@ -88,6 +108,8 @@ def main():
                                  timeout=120, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         assert closing.returncode == 0
         assert process.wait(timeout=20) == 0
+        if args.desktop:
+            assert "桌面窗口：closed" in desktop_events(process)
         assert find_running(database) is None
         process = start(saved_port=True)
         second = ready(process)
@@ -95,11 +117,16 @@ def main():
         assert any(tag["name"] == name for tag in api(second, "tags"))
         assert api(second, "local-service/stop", {}, "POST")["stopping"] is True
         assert process.wait(timeout=20) == 0
+        if args.desktop:
+            assert "桌面窗口：closed" in desktop_events(process)
         assert find_running(database) is None
-        report = {"ok": True, "frozen": not args.source, "tray": args.tray,
+        report = {"ok": True, "frozen": not args.source, "tray": args.tray, "desktop": args.desktop,
                   "isolated_path": True, "static_page": True, "duplicate_reused": True,
                   "graceful_shutdown": True, "restart_persistence": True,
                   "saved_port_on_restart": True, "web_shutdown": True}
+        if args.desktop:
+            report.update({"renderer": "edgechromium", "desktop_window_loaded": True,
+                           "duplicate_activation_requested": True, "desktop_window_closed": True})
         (case / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
         print(json.dumps(report))
     finally:

@@ -11,11 +11,11 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.models import Base, ErrorType, Settings
-from backend.launcher import application_root
+from backend.launcher import database_path
 
 
 DEFAULT_ERROR_TYPES = ("遗漏要点", "概念错误", "概念混淆", "表述不精确")
-DEFAULT_DB_PATH = application_root() / "data" / "quickmemory.db"
+DEFAULT_DB_PATH = database_path()
 
 
 def make_engine(db_path: str | Path | None = None) -> Engine:

@@ -16,6 +16,11 @@ frontend/dist/
 build/
 dist/
 logs/
+webview/
+*.msix
+*.msixbundle
+*.pfx
+*.cer
 *.exe
 *.tsbuildinfo
 *.sqlite

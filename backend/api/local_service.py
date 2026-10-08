@@ -17,6 +17,7 @@ class LocalServiceView(BaseModel):
     page_port: int
     can_stop: bool
     preferred_port: int
+    desktop_window: bool = False
 
 
 class LocalServiceStopView(BaseModel):
@@ -40,6 +41,7 @@ def _view(request: Request, preferences: LauncherPreferences) -> LocalServiceVie
         page_port=getattr(request.app.state, "local_service_page_port", None) or port,
         can_stop=callable(getattr(request.app.state, "local_service_stop", None)),
         preferred_port=preferences.preferred_port,
+        desktop_window=bool(getattr(request.app.state, "local_service_desktop_window", False)),
     )
 
 

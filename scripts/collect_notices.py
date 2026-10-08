@@ -7,6 +7,7 @@ libraries whose license texts are absent from the Python installation.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.metadata as metadata
 import json
 import re
@@ -65,7 +66,26 @@ def runtime_distributions() -> list[metadata.Distribution]:
 
 def upstream_license(dist: metadata.Distribution, allow_fetch: bool) -> list[tuple[str, str]]:
     """Use a versioned primary source, never infer a full license from its name."""
-    if canonicalize_name(dist.metadata["Name"]) != "tokenizers":
+    name = canonicalize_name(dist.metadata["Name"])
+    if name == "proxy-tools" and dist.version == "0.1.0":
+        if not allow_fetch:
+            raise RuntimeError("proxy_tools wheel/sdist has no LICENSE; rerun with --fetch-missing")
+        # Upstream has no release tags. This immutable release-day commit's
+        # complete module matches both the PyPI 0.1.0 sdist and installed wheel.
+        # Package metadata says MIT, but the actual upstream license is BSD:
+        # preserve the full original notice instead of manufacturing MIT text.
+        base = "https://raw.githubusercontent.com/jtushman/proxy_tools/70b751ef5e0647d974506fd5871903711b5e1811/"
+        module = Path(dist.locate_file("proxy_tools/__init__.py"))
+        expected_module = "d1539d95e1a713c068ca81d42e047b2c76568964cf277596d4e19efb22f476be"
+        if hashlib.sha256(module.read_bytes()).hexdigest() != expected_module:
+            raise RuntimeError("proxy_tools source changed; re-audit its upstream license")
+        url = base + "LICENSE.txt"
+        with urlopen(url, timeout=30) as response:
+            raw = response.read()
+        if hashlib.sha256(raw).hexdigest() != "a428fb8a2e762af3eb0a6edbbb88e9b42ccfee80fd9b423958bcacf9b9abbfe4":
+            raise RuntimeError("Unexpected upstream proxy_tools LICENSE content")
+        return [(url + " (module SHA256 verified; upstream BSD notice, despite MIT package metadata)", raw.decode("utf-8"))]
+    if name != "tokenizers":
         return []
     if not re.fullmatch(r"\d+\.\d+\.\d+", dist.version):
         return []
@@ -195,6 +215,27 @@ def native_notices(allow_fetch: bool) -> list[tuple[str, list[tuple[str, str]]]]
     return result
 
 
+def webview_notices() -> list[tuple[str, list[tuple[str, str]]]]:
+    """Match the bundled Microsoft SDK to the retained official NuGet license."""
+    if sys.platform != "win32":
+        return []
+    directory = ROOT / "licenses" / "webview2-1.0.3856.49"
+    source = json.loads((directory / "SOURCE.json").read_text(encoding="utf-8"))
+    dist = metadata.distribution("pywebview")
+    for name, entry in source["verified_pywebview_binaries"].items():
+        binary = Path(dist.locate_file("webview/lib/" + name))
+        if hashlib.sha256(binary.read_bytes()).hexdigest() != entry["sha256"]:
+            raise RuntimeError(f"WebView2 SDK changed; verify its upstream license before release: {name}")
+    licenses = []
+    for name, digest in source["license_files"].items():
+        file = directory / name
+        if hashlib.sha256(file.read_bytes()).hexdigest() != digest:
+            raise RuntimeError(f"Retained WebView2 license does not match official source: {name}")
+        licenses.append((name, read_text(file)))
+    title = f"Microsoft WebView2 SDK {source['version']}\nSource: {source['source']}"
+    return [(title, licenses)]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Collect complete third-party release notices")
     parser.add_argument("--output", type=Path, default=ROOT / "dist" / "THIRD_PARTY_NOTICES.txt")
@@ -204,7 +245,7 @@ def main() -> None:
     runtime = runtime_distributions()
     packages = [python_notice(dist, args.fetch_missing) for dist in runtime]
     npm = npm_notices()
-    native = native_notices(args.fetch_missing)
+    native = native_notices(args.fetch_missing) + webview_notices()
     build = [python_notice(metadata.distribution(name), args.fetch_missing)
              for name in ("pyinstaller", "pyinstaller-hooks-contrib")]
     python_license = Path(sys.base_prefix) / "LICENSE.txt"

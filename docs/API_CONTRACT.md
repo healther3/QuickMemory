@@ -47,7 +47,7 @@
 
 ## 本地服务控制
 
-- `GET /local-service` → `{port,page_port,can_stop,preferred_port}`，端口为整数；当前服务端口与下次启动的首选端口分别展示。
+- `GET /local-service` → `{port,page_port,can_stop,preferred_port,desktop_window}`，端口为整数，`desktop_window` 表示独立窗口模式；当前服务端口与下次启动的首选端口分别展示。
 - `PUT /local-service` 输入必填 `{preferred_port:1024..65535}` → 同 GET。保存到数据库同目录的 `launcher.json`，不立即重启；命令行 `--port` 可覆盖单次启动，首选端口被占用时沿用启动器的附近端口回退。
 - `POST /local-service/stop` → `{stopping:true,message}`，响应后请求有序退出。`desktop.py` 与 `run.py` 支持；直接 Uvicorn 启动未注入回调时返回 409。所有写操作沿用本地 Origin 限制，不返回实例控制令牌。
 

@@ -862,6 +862,11 @@ export interface components {
       can_stop: boolean;
       /** Preferred Port */
       preferred_port: number;
+      /**
+       * Desktop Window
+       * @default false
+       */
+      desktop_window: boolean;
     };
     /** NameInput */
     NameInput: {

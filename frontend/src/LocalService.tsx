@@ -16,6 +16,7 @@ export default function LocalService() {
   const [stopping, setStopping] = useState(false);
 
   const portValue = port ?? String(service.data?.preferred_port ?? "");
+  const desktopWindow = service.data?.desktop_window ?? false;
 
   async function savePort() {
     const preferredPort = Number(portValue);
@@ -39,7 +40,7 @@ export default function LocalService() {
       service.setData(saved);
       setPort(String(saved.preferred_port));
       setStatus(
-        `首选端口 ${saved.preferred_port} 已保存。下次双击 EXE 启动时生效，当前网页地址不变。`,
+        `首选端口 ${saved.preferred_port} 已保存。退出后重新启动轻记时生效。`,
       );
     } catch (e) {
       setError(message(e));
@@ -51,7 +52,9 @@ export default function LocalService() {
   async function stopService() {
     if (
       !window.confirm(
-        "确认关闭本地服务？关闭后网页将无法继续使用，请先保存其他页面的输入并等待评分完成。之后可再次双击“轻记.exe”启动。",
+        desktopWindow
+          ? "确认退出轻记？请先保存输入并等待评分完成。应用窗口与后台服务将一起关闭。"
+          : "确认关闭本地服务？关闭后网页将无法继续使用，请先保存其他页面的输入并等待评分完成。之后可再次双击“轻记.exe”启动。",
       )
     )
       return;
@@ -80,7 +83,9 @@ export default function LocalService() {
       <div className="section-heading">
         <div className="section-title-icon">
           <Server size={22} aria-hidden="true" />
-          <h2 id="local-service-heading">本地服务</h2>
+          <h2 id="local-service-heading">
+            {desktopWindow ? "应用运行" : "本地服务"}
+          </h2>
         </div>
         <span className="pill">仅本机访问</span>
       </div>
@@ -96,7 +101,9 @@ export default function LocalService() {
       ) : (
         <>
           <p className="muted">
-            关闭浏览器后，服务仍会在后台运行。你可以在这里关闭服务，或设置下次启动使用的网页端口。
+            {desktopWindow
+              ? "关闭应用窗口会同时退出后台服务。最小化可继续运行，题库和设置会保留在本机。"
+              : "关闭浏览器后，服务仍会在后台运行。你可以在这里关闭服务，或设置下次启动使用的网页端口。"}
           </p>
           <ErrorBox
             error={error || service.error}
@@ -170,7 +177,9 @@ export default function LocalService() {
                 )}
               </form>
               <div className="local-service-current">
-                <span className="field">当前网页地址</span>
+                <span className="field">
+                  {desktopWindow ? "本地服务地址" : "当前网页地址"}
+                </span>
                 <a
                   href={`http://localhost:${service.data.page_port}`}
                   className="local-service-address"
@@ -185,7 +194,11 @@ export default function LocalService() {
                     onClick={stopService}
                   >
                     <Power size={17} aria-hidden="true" />
-                    {busy === "stop" ? "正在请求关闭…" : "关闭本地服务"}
+                    {busy === "stop"
+                      ? "正在请求关闭…"
+                      : desktopWindow
+                        ? "退出轻记"
+                        : "关闭本地服务"}
                   </button>
                 </div>
                 {!service.data.can_stop && (

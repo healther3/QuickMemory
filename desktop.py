@@ -1,4 +1,4 @@
-"""Windows 双击入口：后台服务、浏览器和系统托盘。"""
+"""Windows 双击入口：独立窗口；--browser 可使用浏览器和系统托盘。"""
 from __future__ import annotations
 
 import argparse
@@ -10,8 +10,9 @@ import sys
 import threading
 import webbrowser
 
-from backend.launcher import (AlreadyRunning, InstanceLease, application_root, attach_instance_routes,
+from backend.launcher import (AlreadyRunning, InstanceLease, activate_running, attach_instance_routes,
                               available_port, database_path, find_running, stop_running)
+from backend.desktop_paths import runtime_root
 from backend.local_service import read_preferences
 
 
@@ -37,15 +38,23 @@ def configure_output(root: Path):
     # --windowed 的 stdout/stderr 是 None。Uvicorn 和 SDK 均需要有效文本流。
     sys.stdout = stream
     sys.stderr = stream
+    logger = logging.getLogger("quickmemory.desktop")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    logger.addHandler(logging.StreamHandler(stream))
     return stream
 
 
 def run_application(args):
+    isolated_database = bool(os.environ.get("QUICKMEMORY_DB"))
     database = database_path()
     os.environ["QUICKMEMORY_DB"] = str(database)
     if args.stop:
         state = find_running(database)
         return 0 if state is None or stop_running(state) else 1
+    desktop_mode = not args.browser and not args.no_browser
+    if args.window_smoke_test and (not desktop_mode or not isolated_database):
+        raise RuntimeError("窗口验收需要独立的 QUICKMEMORY_DB 数据目录，并使用默认桌面模式。")
 
     lease = InstanceLease(database)
     try:
@@ -53,12 +62,19 @@ def run_application(args):
     except AlreadyRunning:
         state = find_running(database, wait_seconds=8)
         if state:
+            if args.window_smoke_test:
+                raise RuntimeError("窗口验收数据目录已有运行实例，请使用独立目录。")
+            if desktop_mode:
+                if activate_running(state):
+                    return 0
+                raise RuntimeError("此数据目录的轻记已在浏览器模式运行。\n请在设置页关闭本地服务，再重新双击轻记，即可打开独立窗口。\n题库和设置不会丢失。")
             if not args.no_browser:
                 webbrowser.open(f"http://localhost:{state['page_port']}")
             return 0
         raise RuntimeError("轻记已经运行。\n\n若当前使用旧版启动脚本，请先在原启动窗口按 Ctrl+C 关闭，再双击轻记.exe。\n题库和设置不会丢失。") from None
 
     tray = None
+    window = None
     service_thread = None
     stopped = threading.Event()
     errors = []
@@ -78,7 +94,13 @@ def run_application(args):
 
         app.state.local_service_stop = request_stop
         app.state.local_service_page_port = port
-        attach_instance_routes(app, lease, request_stop)
+        app.state.local_service_desktop_window = desktop_mode
+        assets_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+        if desktop_mode:
+            from desktop_window import DesktopWindow
+            window = DesktopWindow(url, runtime_root() / "webview", assets_root / "assets" / "quickmemory.ico",
+                                   request_stop, smoke_report=Path(args.window_smoke_test) if args.window_smoke_test else None)
+        attach_instance_routes(app, lease, request_stop, window.activate if window else None)
         lease.publish(port)
 
         def open_page():
@@ -89,9 +111,8 @@ def run_application(args):
             if server.started:
                 webbrowser.open(url + "/settings#local-service")
 
-        if not args.no_tray:
+        if not desktop_mode and not args.no_tray:
             from desktop_tray import TrayIcon
-            assets_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
             tray = TrayIcon(assets_root / "assets" / "quickmemory.ico", open_page, request_stop,
                             on_settings=open_settings)
 
@@ -107,6 +128,8 @@ def run_application(args):
                 stopped.set()
                 if tray:
                     tray.stop()
+                if window:
+                    window.service_stopped()
 
         def ready():
             for _ in range(300):
@@ -121,8 +144,24 @@ def run_application(args):
             errors.append("启动超时，请检查数据目录与 logs/launcher.log。")
             request_stop()
 
-        threading.Thread(target=ready, daemon=True, name="quickmemory-ready").start()
-        if tray:
+        if window:
+            service_thread = threading.Thread(target=serve, name="quickmemory-service")
+            service_thread.start()
+            try:
+                # Do not create a blank window before SQLite and HTTP startup succeed.
+                for _ in range(300):
+                    if stopped.wait(0.2):
+                        break
+                    if server.started:
+                        window.run()  # pywebview requires the process main thread.
+                        break
+                else:
+                    errors.append("启动超时，请检查数据目录与 logs/launcher.log。")
+            finally:
+                request_stop()
+                service_thread.join()
+        elif tray:
+            threading.Thread(target=ready, daemon=True, name="quickmemory-ready").start()
             service_thread = threading.Thread(target=serve, name="quickmemory-service")
             service_thread.start()
             try:
@@ -131,6 +170,7 @@ def run_application(args):
                 request_stop()
                 service_thread.join()
         else:
+            threading.Thread(target=ready, daemon=True, name="quickmemory-ready").start()
             serve()
         if errors:
             raise RuntimeError(errors[0])
@@ -142,16 +182,18 @@ def run_application(args):
 def main():
     parser = argparse.ArgumentParser(description="轻记桌面启动器")
     parser.add_argument("--port", type=int, help="覆盖已保存的首选端口，仅本次启动生效")
+    parser.add_argument("--browser", action="store_true", help="使用浏览器与托盘模式，默认打开独立桌面窗口")
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--no-tray", action="store_true", help="用于自动验收")
     parser.add_argument("--stop", action="store_true", help="关闭同数据目录的正在运行实例")
     parser.add_argument("--self-test", metavar="REPORT", help="执行离线打包自检并写入报告")
+    parser.add_argument("--window-smoke-test", metavar="REPORT", help="用隔离数据目录验证真实桌面窗口后自动关闭")
     args = parser.parse_args()
     if args.port is not None and not 1024 <= args.port <= 65535:
         parser.error("端口必须在 1024 到 65535 之间")
     stream = None
     try:
-        stream = configure_output(application_root())
+        stream = configure_output(runtime_root())
         if args.self_test:
             try:
                 from backend.frozen_check import run_checks

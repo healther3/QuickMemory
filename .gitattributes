@@ -4,3 +4,5 @@
 *.png binary
 *.ico binary
 docs/PRODUCT_CONTEXT.md -text
+# Retain upstream license bytes, including original spacing, for SHA256 verification.
+licenses/**/*.txt -text -whitespace

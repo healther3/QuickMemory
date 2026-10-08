@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 """Windows standalone, windowless, single-file release; private data is excluded."""
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_submodules, copy_metadata
+from PyInstaller.utils.hooks import collect_submodules, copy_metadata, collect_data_files
 
 ROOT = Path(SPECPATH).resolve()
 
@@ -11,8 +11,9 @@ datas = [
     (str(ROOT / "assets" / "quickmemory.ico"), "assets"),
 ]
 # importlib.metadata is used by the SDK and the offline release self-test.
-for package in ("litellm", "fastapi", "uvicorn", "SQLAlchemy", "pydantic"):
+for package in ("litellm", "fastapi", "uvicorn", "SQLAlchemy", "pydantic", "pywebview", "pythonnet"):
     datas += copy_metadata(package, recursive=True)
+datas += collect_data_files("webview", includes=["js/**"])
 
 a = Analysis(
     [str(ROOT / "desktop.py")],
@@ -24,6 +25,7 @@ a = Analysis(
         "uvicorn.protocols.http.auto", "uvicorn.protocols.http.h11_impl",
         "uvicorn.protocols.websockets.auto", "uvicorn.lifespan.on",
         "sqlalchemy.dialects.sqlite", "tiktoken_ext.openai_public",
+        "webview.platforms.winforms", "webview.platforms.edgechromium", "clr", "clr_loader",
     ],
     hookspath=[str(ROOT / "scripts" / "pyinstaller_hooks")],
     runtime_hooks=[str(ROOT / "scripts" / "pyinstaller_hooks" / "runtime_local_only.py")],

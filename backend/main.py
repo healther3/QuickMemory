@@ -43,7 +43,7 @@ def create_app(db_path: str | Path | None = None, seed: bool = True) -> FastAPI:
             await queue.stop()
             engine.dispose()
 
-    app = FastAPI(title="轻记 · 本地概念默写", version="1.1.0", lifespan=lifespan,
+    app = FastAPI(title="轻记 · 本地概念默写", version="1.2.0", lifespan=lifespan,
                   docs_url=None, redoc_url=None)
     app.state.grading_service = GradingService()
     app.state.local_service_database = str(db_path) if db_path is not None else str(database_path())

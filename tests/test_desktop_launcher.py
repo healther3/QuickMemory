@@ -76,3 +76,33 @@ def test_instance_control_requires_secret_and_blocks_cross_site(tmp_path):
             assert client.post("/api/_local_instance", headers=headers).json() == {"stopping": True}
             assert stopping == [True]
             assert "/api/_local_instance" not in app.openapi()["paths"]
+
+
+def test_activation_is_authenticated_and_never_stops_the_application(tmp_path):
+    with launcher.InstanceLease(tmp_path / "activate.db") as lease:
+        app = create_app(lease.database, seed=False)
+        stopped, activated = [], []
+        launcher.attach_instance_routes(app, lease, lambda: stopped.append(True),
+                                        lambda: activated.append(True) or True)
+        with TestClient(app) as client:
+            path = "/api/_local_instance/activate"
+            headers = {"X-QuickMemory-Instance": lease.token}
+            assert client.post(path).status_code == 403
+            assert client.post(path, headers={**headers, "Origin": "https://example.com"}).status_code == 403
+            assert not activated
+            assert client.post(path, headers=headers).json() == {"activated": True}
+            assert activated == [True]
+            assert stopped == []
+            assert path not in app.openapi()["paths"]
+
+
+def test_browser_instance_declines_activation_without_stopping(tmp_path):
+    with launcher.InstanceLease(tmp_path / "browser.db") as lease:
+        app = create_app(lease.database, seed=False)
+        stopped = []
+        launcher.attach_instance_routes(app, lease, lambda: stopped.append(True))
+        with TestClient(app) as client:
+            reply = client.post("/api/_local_instance/activate", headers={"X-QuickMemory-Instance": lease.token})
+            assert reply.status_code == 409
+            assert reply.json() == {"activated": False}
+            assert stopped == []

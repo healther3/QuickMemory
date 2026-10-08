@@ -10,4 +10,4 @@
 - 保持已建立数据库及共享数据契约。修改契约时更新文档并明确告知用户。
 - 测试入口：`.venv/Scripts/python.exe -m pytest -q`（Windows）；其他平台使用 `.venv/bin/python`。
 - 测试模拟 LLM，不读取或输出真实密钥。真实模型验证需使用用户自行配置的凭证，并如实区分与模拟测试。
-- Windows 日常使用 `轻记.exe`，源码入口 `desktop.py` + 原生托盘；发行构建用 `scripts/build_windows.py`。EXE 同级 `data` 为持久数据库，临时解包目录仅放资源；不得将用户数据库、密钥或日志打进发行包。构建脚本通过本机模拟接口的冻结自检后才替换发行 EXE。
+- Windows 日常使用 `轻记.exe`，源码入口 `desktop.py` 默认独立 WebView2 窗口；`--browser` 保留浏览器/托盘模式。便携 EXE 同级 `data` 为持久数据库，MSIX 版使用包身份对应的用户 LocalState；临时解包目录仅放资源。不得将用户数据库、密钥、WebView 缓存或日志打进发行包。发行构建用 `scripts/build_windows.py`，通过冻结自检后才替换 EXE。

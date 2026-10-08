@@ -48,6 +48,22 @@ function route(element: React.ReactNode, path='/') {
 }
 
 describe('设置与卡片编辑', () => {
+  it('独立窗口显示退出应用，并在确认后请求关闭后台', async () => {
+    const previous=handler;
+    handler=(path,method,body)=>{
+      if(path==='/api/local-service') return {port:8000,page_port:8000,can_stop:true,preferred_port:8000,desktop_window:true};
+      if(path==='/api/local-service/stop') return {stopping:true};
+      return previous(path,method,body);
+    };
+    route(<Settings/>);
+    const close=await screen.findByRole('button',{name:'退出轻记'});
+    expect(screen.getByRole('heading',{name:'应用运行'})).toBeTruthy();
+    expect(screen.getByText(/关闭应用窗口会同时退出后台服务/)).toBeTruthy();
+    await userEvent.click(close);
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('应用窗口与后台服务将一起关闭'));
+    await waitFor(()=>expect(calls.filter(c=>c.path==='/api/local-service/stop'&&c.method==='POST')).toHaveLength(1));
+  });
+
   it('网页端口独立保存并在再次进入时恢复，当前地址保持不变', async () => {
     let service={port:8000,page_port:8000,can_stop:true,preferred_port:8000};
     const previous=handler;
@@ -170,7 +186,9 @@ describe('设置与卡片编辑', () => {
     };
     route(<Routes><Route path='/cards/new' element={<Editor/>}/><Route path='/cards/:id/edit' element={<p>保存后页面</p>}/></Routes>, '/cards/new');
     await screen.findByLabelText('测试文件夹');
+    expect(window.__quickMemoryHasUnsavedChanges).toBe(false);
     await userEvent.type(screen.getByLabelText(/术语/),'测试术语');
+    expect(window.__quickMemoryHasUnsavedChanges).toBe(true);
     const definition=screen.getByLabelText(/参考定义/);
     await userEvent.type(definition,'我原来的定义');
     await userEvent.click(screen.getByRole('button',{name:'AI 核对定义'}));
@@ -183,6 +201,7 @@ describe('设置与卡片编辑', () => {
     await userEvent.click(screen.getByLabelText('另一个文件夹'));
     await userEvent.click(screen.getByRole('button',{name:'保存卡片'}));
     await screen.findByText('保存后页面');
+    expect(window.__quickMemoryHasUnsavedChanges).toBe(false);
     expect(calls.find(c=>c.method==='POST'&&c.path==='/api/cards')?.body.folder_ids).toEqual([1,2]);
     expect(calls.find(c=>c.method==='POST'&&c.path==='/api/cards')?.body.definition).toBe('建议的新定义');
   });

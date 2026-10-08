@@ -50,3 +50,13 @@
 ## 本地服务控制补充
 
 设置页新增 `GET/PUT /api/local-service`（当前地址、可否关闭及首选端口）与 `POST /api/local-service/stop`（有序关闭）。写请求继续受本地 Origin 限制；网页不接触实例令牌。只有 `desktop.py` / `run.py` 注入退出回调后允许网页关闭，直接 Uvicorn 启动时返回不支持。首选端口存放于数据库同目录 `launcher.json`，下次启动读取；命令行 `--port` 只覆盖当次。数据库结构、模型密钥和评分配置均不变。
+
+## v1.2 独立窗口与商店打包
+
+Windows EXE 默认用 pywebview 的 WebView2（Edge Chromium）渲染本机界面，FastAPI 在同进程后台线程运行。窗口关闭与后端退出双向联动；`--browser` 保留旧浏览器/托盘模式，`--no-browser` 保留自动验收用途。窗口仅允许当前环回 HTTP Origin（及其导出 Blob）导航，不提供自定义 Python JS API；编辑页通过无内容的布尔标记支持原生关闭前确认。
+
+`GET/PUT /api/local-service` 新增 `desktop_window` 布尔值，驱动桌面模式的设置文案。新增不进入 OpenAPI 的 `POST /api/_local_instance/activate`，使用已有随机实例令牌授权并唤起同库窗口；与退出路由独立，避免调用旧版实例时误关闭。
+
+便携版仍读写 EXE 同级 `data`；通过 Windows Package Family Name 识别 MSIX 进程后，使用 `%LOCALAPPDATA%/Packages/<PFN>/LocalState` 下的 `data`、`logs` 和 `webview`，不会向只读安装目录写入。`QUICKMEMORY_DB` 显式指定测试或自选数据库时，日志与窗口缓存跟随该数据目录。两类发行渠道数据不自动互相迁移，数据库结构及既有设置不变。
+
+MSIX 脚本限定载荷白名单，并在打包前运行冻结自检。真实商店构建必须明确输入 Partner Center 的三项身份；开发身份包另行命名并明确未签名、未提交。MakeAppx 验证不代表实际安装、升级、WACK 或商店认证已经通过。
