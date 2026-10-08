@@ -7,6 +7,7 @@ QuickMemory 自有代码的许可见根目录 `LICENSE`。第三方组件保留�
 每个 Windows Release 随附 `THIRD_PARTY_NOTICES.txt`，按实际安装的包名、版本保留完整许可和 NOTICE 文本，包括：
 
 - Python 解释器的 `LICENSE.txt`（包含其第三方通知）。
+- Python 本机运行库 OpenSSL、Expat、zlib、SQLite、libffi、liblzma 的上游许可/声明。
 - `requirements.txt` 解析得到的已安装 Python 运行依赖及传递依赖。
 - npm 锁文件中非开发依赖的完整许可文本。
 - PyInstaller 的 `COPYING.txt`（含 bootloader 例外）与 hooks 的许可文本。
@@ -17,6 +18,8 @@ QuickMemory 自有代码的许可见根目录 `LICENSE`。第三方组件保留�
 .\.venv\Scripts\python.exe scripts\collect_notices.py --fetch-missing
 ```
 
-输出为 `dist/THIRD_PARTY_NOTICES.txt`，不包含机器路径或应用数据。收集器优先读取已安装组件的许可文件，遇到缺少全文的组件即报错，不根据许可名称猜测文本。目前 `tokenizers` 的 wheel 未提供许可文件，`--fetch-missing` 仅为它从[官方版本标签](https://github.com/huggingface/tokenizers)读取 `LICENSE`；该请求只发生在人工运行的发行准备脚本中。
+输出为 `dist/THIRD_PARTY_NOTICES.txt`，不包含机器路径或应用数据。收集器优先读取已安装组件的许可文件，遇到缺少全文的组件即报错，不根据许可名称猜测文本。`--fetch-missing` 从官方版本标签读取缺失的 `tokenizers` 许可及本机库许可；网络请求只发生在人工运行的发行准备脚本中。
+
+OpenSSL、Expat、zlib、SQLite 的版本取自构建解释器运行时。此环境中 `libffi-8.dll` 和静态链接的 liblzma 不导出补丁版本：通知明确区分所附许可文本的上游版本与未核实的二进制版本，并保留 liblzma 历史公有领域和 0BSD 声明，不把它们标成 MIT。更换 Python 发行来源时，应重新检查其本机运行库清单。
 
 发布或转发 Windows 程序时，请同时保留随附的项目 `LICENSE` 与第三方通知文件。对未修改第三方组件的相应版本源码，可从通知中的上游链接及 PyPI/npm 对应版本获取。

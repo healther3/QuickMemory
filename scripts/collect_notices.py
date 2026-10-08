@@ -1,8 +1,8 @@
 """Collect release notices from the actual build environment, never user data.
 
 Run with the same Python environment used for build_windows.py, after npm ci.
-The only possible network request is an explicit upstream-license fallback for
-the tokenizers wheel, which does not currently ship its LICENSE file.
+Explicit upstream-license fetches cover missing wheel license files and native
+libraries whose license texts are absent from the Python installation.
 """
 from __future__ import annotations
 
@@ -131,15 +131,80 @@ def npm_notices() -> list[tuple[str, list[tuple[str, str]]]]:
     return result
 
 
+def native_notices(allow_fetch: bool) -> list[tuple[str, list[tuple[str, str]]]]:
+    """Include native runtime notices omitted by this Python installation.
+
+    Version-reporting modules supply exact versions. libffi and statically
+    linked liblzma do not expose a patch version here, so explicitly label the
+    license source revisions rather than claiming an unverified binary version.
+    """
+    import pyexpat
+    import sqlite3
+    import ssl
+    import zlib
+
+    if not allow_fetch:
+        raise RuntimeError("Native runtime licenses require --fetch-missing")
+    openssl = ssl.OPENSSL_VERSION.split()[1]
+    expat = pyexpat.EXPAT_VERSION.removeprefix("expat_")
+    versions = [openssl, expat, sqlite3.sqlite_version, zlib.ZLIB_RUNTIME_VERSION]
+    if not all(re.fullmatch(r"\d+\.\d+\.\d+", version) for version in versions):
+        raise RuntimeError("Unexpected native library version; review license source tags")
+    raw = "https://raw.githubusercontent.com/"
+    entries = [
+        (f"Native runtime: OpenSSL {openssl}", [
+            f"{raw}openssl/openssl/openssl-{openssl}/LICENSE.txt",
+            f"{raw}openssl/openssl/openssl-{openssl}/AUTHORS.md",
+        ]),
+        (f"Native runtime: Expat {expat}", [
+            f"{raw}libexpat/libexpat/R_{expat.replace('.', '_')}/expat/COPYING",
+        ]),
+        (f"Native runtime: zlib {zlib.ZLIB_RUNTIME_VERSION}", [
+            f"{raw}madler/zlib/v{zlib.ZLIB_RUNTIME_VERSION}/LICENSE",
+        ]),
+        (f"Native runtime: SQLite {sqlite3.sqlite_version}", [
+            f"{raw}sqlite/sqlite/version-{sqlite3.sqlite_version}/LICENSE.md",
+        ]),
+        ("Native runtime: libffi (libffi-8.dll ABI 8; exact patch version not exported)\n"
+         "License source revisions: libffi v3.4.4 and v3.5.2; these labels identify\n"
+         "the license sources, not an asserted binary version.", [
+            f"{raw}libffi/libffi/v3.4.4/LICENSE",
+            f"{raw}libffi/libffi/v3.5.2/LICENSE",
+        ]),
+        ("Native runtime: liblzma, statically linked in Python's _lzma extension\n"
+         "Exact patch version not exported. Both historical public-domain and\n"
+         "current 0BSD upstream licensing notices are retained. Source revisions\n"
+         "below identify license texts, not an asserted binary version.\n"
+         "This software includes code from XZ Utils <https://tukaani.org/xz/>.\n"
+         "Copyright (C) The XZ Utils authors and contributors", [
+            f"{raw}tukaani-project/xz/v5.2.5/COPYING",
+            f"{raw}tukaani-project/xz/v5.8.1/COPYING",
+            f"{raw}tukaani-project/xz/v5.8.1/COPYING.0BSD",
+        ]),
+    ]
+    result = []
+    for title, urls in entries:
+        licenses = []
+        for url in urls:
+            with urlopen(url, timeout=30) as response:
+                text = response.read().decode("utf-8")
+            if len(text.strip()) < 100:
+                raise RuntimeError("Incomplete upstream native license: " + url)
+            licenses.append((url, text))
+        result.append((title, licenses))
+    return result
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Collect complete third-party release notices")
     parser.add_argument("--output", type=Path, default=ROOT / "dist" / "THIRD_PARTY_NOTICES.txt")
-    parser.add_argument("--fetch-missing", action="store_true", help="Fetch missing tokenizers license from its official version tag")
+    parser.add_argument("--fetch-missing", action="store_true", help="Fetch missing wheel/native licenses from official source tags")
     args = parser.parse_args()
 
     runtime = runtime_distributions()
     packages = [python_notice(dist, args.fetch_missing) for dist in runtime]
     npm = npm_notices()
+    native = native_notices(args.fetch_missing)
     build = [python_notice(metadata.distribution(name), args.fetch_missing)
              for name in ("pyinstaller", "pyinstaller-hooks-contrib")]
     python_license = Path(sys.base_prefix) / "LICENSE.txt"
@@ -151,16 +216,17 @@ def main() -> None:
         "Collected from the installed build environment and npm production lockfile.\n"
         "The dependency inventory is conservative: optional code may not be exercised\n"
         "or bundled. Package license files and notices are reproduced without edits.\n"
-        "The Python installation license includes its bundled third-party notices.\n"
+        "The Python installation license is retained in full. Additional native\n"
+        "runtime licenses not supplied in that file are included separately.\n"
         "The PyInstaller COPYING text includes the bootloader licensing exception.\n"
         "Source packages are available from the project URLs below and the versioned\n"
         "Python Package Index / npm registry entries corresponding to each package.\n"
         f"\nInventory: Python runtime packages {len(runtime)}; npm production packages {len(npm)}; "
-        f"build tools {len(build)}.\n"
+        f"native library notice groups {len(native)}; build tools {len(build)}.\n"
     ]
     for title, files in [
         (f"Python interpreter {sys.version.split()[0]}", [("Python LICENSE.txt", read_text(python_license))]),
-        *packages, *npm, *build,
+        *packages, *npm, *native, *build,
     ]:
         sections.append("\n" + "=" * 78 + "\n" + title + "\n")
         for label, text in files:
