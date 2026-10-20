@@ -8,6 +8,7 @@ from typing import Literal
 
 from fastapi import HTTPException
 from pydantic import Field, ValidationError, field_validator, model_validator
+from pydantic_core import PydanticCustomError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -27,7 +28,7 @@ class ImportRequest(StrictModel):
     @model_validator(mode="after")
     def target_is_valid(self):
         if self.folder_id is None and not self.folder_name and not self.filename:
-            raise ValueError("请选择已有文件夹，或填写新文件夹名称 / 文件名")
+            raise PydanticCustomError("import_folder_name_required", "请给文件夹命名")
         return self
 
 

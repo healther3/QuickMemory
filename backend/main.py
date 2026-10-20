@@ -74,6 +74,8 @@ def create_app(db_path: str | Path | None = None, seed: bool = True) -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_request, exc):
+        if any(error["type"] == "import_folder_name_required" for error in exc.errors()):
+            return JSONResponse({"detail": "请给文件夹命名"}, status_code=422)
         names = {"term": "术语", "definition": "参考定义", "name": "名称", "user_answer": "作答内容",
                  "time_spent_ms": "作答用时", "content": "题库内容", "api_key": "API 密钥",
                  "judge_count": "裁判数量", "folder_ids": "所属文件夹", "folder_id": "文件夹",
